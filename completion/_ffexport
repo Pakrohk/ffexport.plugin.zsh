@@ -1,0 +1,53 @@
+# _ffexport - zsh completion for ffexport (ffexport plugin)
+_local_ffexport_script() {
+  if [[ -n "${_ffexport_script:-}" ]]; then
+    echo "${_ffexport_script}"
+    return
+  fi
+  if command -v ffexport >/dev/null 2>&1; then
+    command -v ffexport
+  elif command -v ffexport.sh >/dev/null 2>&1; then
+    command -v ffexport.sh
+  else
+    echo "ffexport"
+  fi
+}
+
+_ffexport_get_profiles() {
+  local script out
+  script=$(_local_ffexport_script)
+  out=$("$script" --list-profiles 2>/dev/null) || out=""
+  if [[ -n $out ]]; then
+    print -l ${(f)out}
+  fi
+}
+
+_ffexport() {
+  local -a profiles
+  typeset -A opt_args
+
+  profiles=($(_ffexport_get_profiles))
+  if (( ${#profiles} == 0 )); then
+    profiles=(Instagram.Reel Instagram.Post YouTube.Post YouTube.Short Custom)
+  fi
+
+  _arguments \
+    '(-p --profile)'{-p,--profile}'[profile name]:profile:->profile' \
+    '(-i --input)'{-i,--input}'[input file]:file:_files' \
+    '(-q --quality)'{-q,--quality}'[quality]:quality:(low medium high)' \
+    '-n[output base name]:name' \
+    '-d[output dir]:directory:_directories' \
+    '-x[extra ffmpeg args]:args' \
+    '--list-profiles[print available profiles]' \
+    '*: :_files' && return 0
+
+  if [[ $state == profile ]]; then
+    compadd -a profiles
+    return 0
+  fi
+
+  return 1
+}
+
+compdef _ffexport ffexport
+compdef _ffexport ffexport.sh

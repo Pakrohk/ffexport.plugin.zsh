@@ -1,0 +1,382 @@
+#!/usr/bin/env bash
+# ffexport - export tool with profile import/export features
+# Place in plugin/bin/ffexport and make executable (chmod +x)
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+CONFIG_FILE="${FFEXPORT_PROFILES:-$script_dir/../profiles.toml}"
+
+die(){ echo "Error: $*" >&2; exit 1; }
+
+usage(){
+  cat <<EOF
+ffexport - export videos using TOML profiles (profiles at: $CONFIG_FILE)
+
+Usage:
+  ffexport -p PROFILE -i INPUT [options]         normal export
+  ffexport --export-profile PROFILE --out FILE  export profile to a standalone TOML
+  ffexport --import-profile FILE                 import/merge TOML into plugin profiles
+Options:
+  -p PROFILE     profile name (dot notation allowed: Instagram.Reel)
+  -i INPUT       input file (required for normal export)
+  -q QUALITY     low|medium|high (affects bitrate/CRF)
+  -n NAME        output base name (optional)
+  -d OUTDIR      output dir (default: same dir as input)
+  -x EXTRA       extra ffmpeg args (string)
+  --list-profiles    list available profiles from profiles.toml
+  --export-profile   export a single profile to file: requires --out
+  --import-profile   import/merge one or many profiles from TOML file
+  --out FILE     output file for --export-profile
+  -h             show this help
+EOF
+}
+
+if [[ $# -eq 0 ]]; then usage; exit 0; fi
+
+# arg parsing (manual to allow long opts)
+PROFILE=""
+INPUT=""
+QUALITY=""
+OUTNAME=""
+OUTDIR=""
+EXTRA_ARGS=""
+EXPORT_PROFILE=""
+IMPORT_PROFILE=""
+OUTFILE=""
+LIST_ONLY=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p) PROFILE="$2"; shift 2;;
+    -i) INPUT="$2"; shift 2;;
+    -q) QUALITY="$2"; shift 2;;
+    -n) OUTNAME="$2"; shift 2;;
+    -d) OUTDIR="$2"; shift 2;;
+    -x) EXTRA_ARGS="$2"; shift 2;;
+    --list-profiles) LIST_ONLY=1; shift;;
+    --export-profile) EXPORT_PROFILE="$2"; shift 2;;
+    --import-profile) IMPORT_PROFILE="$2"; shift 2;;
+    --out) OUTFILE="$2"; shift 2;;
+    -h|--help) usage; exit 0;;
+    *) echo "Unknown argument: $1"; usage; exit 2;;
+  esac
+done
+
+# list profiles: reuse the python snippet to climb profiles.toml structure
+if [[ $LIST_ONLY -eq 1 ]]; then
+  python3 - <<PY
+import sys, pathlib, tomllib
+cfg=pathlib.Path("${CONFIG_FILE}")
+if not cfg.exists():
+    sys.exit(0)
+doc=tomllib.loads(cfg.read_bytes())
+platforms=doc.get("platforms",{})
+def walk(d,prefix=""):
+    for k,v in d.items():
+        if isinstance(v, dict):
+            has_scalar = any(not isinstance(x, dict) for x in v.values())
+            if has_scalar:
+                print((prefix+k).strip("."))
+            for subk,subv in v.items():
+                if isinstance(subv, dict):
+                    walk({subk:subv}, prefix + k + ".")
+walk(platforms)
+PY
+  exit 0
+fi
+
+# handle export-profile
+if [[ -n "$EXPORT_PROFILE" ]]; then
+  if [[ -z "$OUTFILE" ]]; then die "--export-profile requires --out <file>"; fi
+  python3 - "$CONFIG_FILE" "$EXPORT_PROFILE" "$OUTFILE" <<'PY'
+import sys, pathlib, tomllib, tomli_w, json
+cfg_path = pathlib.Path(sys.argv[1])
+profile = sys.argv[2]
+outfile = pathlib.Path(sys.argv[3])
+
+if not cfg_path.exists():
+    print(f"ERROR: profiles file not found: {cfg_path}", file=sys.stderr); sys.exit(2)
+doc = tomllib.loads(cfg_path.read_bytes())
+platforms = doc.get("platforms",{})
+
+# descend
+parts = profile.split(".")
+node = platforms
+found=None
+for p in parts:
+    if p in node:
+        found = node[p]
+        node = found
+    else:
+        print(f"ERROR:NO_PROFILE:{profile}", file=sys.stderr); sys.exit(3)
+
+# merge defaults -> found
+defaults = doc.get("defaults",{})
+out = dict(defaults)
+# normalize keys lightly
+def norm(d):
+    o={}
+    for k,v in d.items():
+        key=k.replace("-", "_")
+        if key in ("bitrate_video","bitrate"): key="video_bitrate"
+        if key in ("pix_fmt","pixfmt"): key="pixel_format"
+        o[key]=v
+    return o
+
+out.update(norm(found if isinstance(found, dict) else {}))
+# write a minimal TOML: put defaults under [defaults] and single profile under [platforms.<profile>]
+# produce toml using tomli-w if available, otherwise fallback to simple manual write
+try:
+    import tomli_w
+    out_doc = {"defaults": defaults, "platforms": {}}
+    # create nested structure for profile name with dots
+    parts=profile.split(".")
+    target=out_doc["platforms"]
+    for p in parts[:-1]:
+        target=p
+    # simpler: write as platforms.{profile} key
+    out_doc["platforms"] = {profile: found}
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+    outfile.write_bytes(tomli_w.dumps(out_doc).encode())
+    print(f"Exported profile '{profile}' -> {outfile}")
+except Exception:
+    # fallback: create a small TOML manually
+    s=[]
+    s.append("# Exported by ffexport")
+    s.append("[defaults]")
+    for k,v in defaults.items():
+        s.append(f'{k} = {json.dumps(v)}')
+    s.append("")
+    s.append(f'[platforms."{profile}"]')
+    for k,v in (found or {}).items():
+        s.append(f'{k} = {json.dumps(v)}')
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+    outfile.write_text("\n".join(s))
+    print(f"Exported profile '{profile}' -> {outfile}")
+PY
+  exit $?
+fi
+
+# handle import-profile (merge)
+if [[ -n "$IMPORT_PROFILE" ]]; then
+  # ensure file exists
+  if [[ ! -f "$IMPORT_PROFILE" ]]; then die "Import file not found: $IMPORT_PROFILE"; fi
+  # ensure we can write to CONFIG_FILE location
+  cfg_dir="$(dirname "$CONFIG_FILE")"
+  if [[ ! -w "$cfg_dir" && ! -w "$CONFIG_FILE" ]]; then
+    die "No write permission to profiles file or its directory. Either run with proper permissions or set FFEXPORT_PROFILES to a writable path."
+  fi
+
+  python3 - "$CONFIG_FILE" "$IMPORT_PROFILE" <<'PY'
+import sys, pathlib, tomllib, shutil, datetime, json, subprocess
+cfg_path = pathlib.Path(sys.argv[1])
+import_path = pathlib.Path(sys.argv[2])
+
+if not cfg_path.exists():
+    print(f"ERROR: profiles base file not found: {cfg_path}", file=sys.stderr); sys.exit(2)
+if not import_path.exists():
+    print(f"ERROR: import file not found: {import_path}", file=sys.stderr); sys.exit(3)
+
+base = tomllib.loads(cfg_path.read_bytes())
+imp = tomllib.loads(import_path.read_bytes())
+
+# Merge strategy:
+# - Merge top-level "defaults" (imp overrides base.defaults)
+# - Merge "platforms": for each key in imp.platforms, override or add
+new = dict(base)
+# merge defaults
+if "defaults" in imp:
+    merged_defaults = dict(base.get("defaults",{}))
+    merged_defaults.update(imp.get("defaults",{}))
+    new["defaults"] = merged_defaults
+# merge platforms
+platforms = dict(base.get("platforms",{}))
+for k,v in imp.get("platforms",{}).items():
+    # if imported has nested dicts (like Instagram.Reel), copy them properly
+    platforms[k] = v
+new["platforms"] = platforms
+
+# backup original
+bak = cfg_path.with_suffix(cfg_path.suffix + f".bak-{datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}")
+shutil.copy2(cfg_path, bak)
+print(f"Backup created: {bak}")
+
+# write merged TOML: try tomli_w for proper toml output; otherwise basic writer
+try:
+    import tomli_w
+    out = tomli_w.dumps(new)
+    cfg_path.write_bytes(out.encode())
+    print(f"Merged profiles written to {cfg_path}")
+except Exception:
+    # fallback: naive writer (not perfect TOML, but readable)
+    lines=[]
+    if "defaults" in new:
+        lines.append("[defaults]")
+        for kk,vv in new["defaults"].items():
+            lines.append(f'{kk} = {json.dumps(vv)}')
+        lines.append("")
+    lines.append("[platforms]")
+    for pk,pv in new["platforms"].items():
+        # if profile key contains dots, preserve as string key
+        lines.append(f'["{pk}"]')
+        if isinstance(pv, dict):
+            for kk,vv in pv.items():
+                lines.append(f'{kk} = {json.dumps(vv)}')
+        lines.append("")
+    cfg_path.write_text("\n".join(lines))
+    print(f"Merged profiles written to {cfg_path} (naive writer)")
+
+# if repo is git, add + commit
+try:
+    repo_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], cwd=str(cfg_path.parent), stderr=subprocess.DEVNULL).decode().strip()
+    # check file inside repo
+    if repo_root:
+        subprocess.run(["git","add", str(cfg_path)], cwd=repo_root, check=True)
+        subprocess.run(["git","commit","-m", f"ffexport: import profiles from {import_path.name}"], cwd=repo_root, check=True)
+        print("Committed merged profiles to git.")
+except Exception:
+    # ignore git errors
+    pass
+PY
+  exit $?
+fi
+
+# Normal export flow (existing behavior)
+[[ -n "$PROFILE" ]] || die "Profile required (-p) for normal export"
+[[ -n "$INPUT" ]]   || die "Input file required (-i) for normal export"
+[[ -f "$CONFIG_FILE" ]] || die "profiles file not found at $CONFIG_FILE"
+[[ -f "$INPUT" ]] || die "Input file not found: $INPUT"
+
+# delegate to the same python-based executor used earlier: build then exec ffmpeg
+python3 - "$CONFIG_FILE" "$PROFILE" "$INPUT" "$QUALITY" "$OUTNAME" "$OUTDIR" "$EXTRA_ARGS" <<'PYCODE'
+import sys, pathlib, tomllib, shlex, json, os
+cfg_path = pathlib.Path(sys.argv[1])
+profile_path = sys.argv[2]
+input_file = pathlib.Path(sys.argv[3]).resolve()
+quality_flag = sys.argv[4] or ""
+outname_override = sys.argv[5] or ""
+outdir_override = sys.argv[6] or ""
+cli_extra = sys.argv[7] or ""
+
+if not cfg_path.exists():
+    print(f"ERROR: profiles file not found: {cfg_path}", file=sys.stderr); sys.exit(2)
+
+doc = tomllib.loads(cfg_path.read_bytes())
+defaults = doc.get("defaults",{})
+platforms = doc.get("platforms",{})
+
+# descend into nested profile (dot notation)
+parts = profile_path.split(".")
+node = platforms
+found=None
+for p in parts:
+    if p in node:
+        found = node[p]
+        node = found
+    else:
+        print(f"ERROR:NO_PROFILE:{profile_path}", file=sys.stderr)
+        sys.exit(3)
+
+# normalize and merge defaults
+def norm(d):
+    r={}
+    for k,v in d.items():
+        k2=k.replace("-", "_")
+        if k2 in ("bitrate_video","bitrate"): k2="video_bitrate"
+        if k2 in ("pix_fmt","pixfmt"): k2="pixel_format"
+        r[k2]=v
+    return r
+
+merged = dict(norm(defaults))
+if isinstance(found, dict):
+    merged.update(norm(found))
+
+# apply quality heuristics
+def to_k(v):
+    try:
+        if isinstance(v,str) and v.endswith("k"):
+            return int(v[:-1])
+        return int(v)
+    except:
+        return None
+
+video_bitrate = merged.get("video_bitrate","") or ""
+crf = int(merged.get("crf",18))
+if quality_flag == "low":
+    if video_bitrate:
+        n = to_k(video_bitrate)
+        if n: video_bitrate = f"{max(1000, n//2)}k"
+    else:
+        crf = min(51, crf + 6)
+elif quality_flag == "high":
+    if video_bitrate:
+        n = to_k(video_bitrate)
+        if n: video_bitrate = f"{int(n + n*0.2)}k"
+    else:
+        crf = max(0, crf - 2)
+
+# paths and names
+outdir = outdir_override or str(input_file.parent)
+os.makedirs(outdir, exist_ok=True)
+if outname_override:
+    outname = outname_override
+else:
+    base = input_file.stem
+    profname = merged.get("name", profile_path.replace(".","_"))
+    outname = f"{base}_{profname}"
+container = merged.get("container","mp4")
+output_path = os.path.join(outdir, outname + "." + container)
+
+resolution = merged.get("resolution","")
+filters = merged.get("filters","")
+pixel_format = merged.get("pixel_format","yuv420p")
+fps = merged.get("fps",30)
+video_codec = merged.get("video_codec","libx264")
+audio_codec = merged.get("audio_codec","aac")
+audio_bitrate = merged.get("audio_bitrate","128k")
+preset = merged.get("preset","medium")
+extra_args = merged.get("extra_args","")
+if cli_extra:
+    extra_args = (extra_args + " " + cli_extra).strip()
+
+vf = []
+if resolution and resolution != "keep":
+    vf.append(f"scale={resolution}")
+if filters:
+    vf.append(filters)
+vf_str = ",".join(vf) if vf else ""
+
+cmd = ["ffmpeg", "-hide_banner", "-y", "-i", str(input_file)]
+if vf_str:
+    cmd += ["-vf", vf_str]
+
+if video_bitrate:
+    cmd += ["-c:v", video_codec, "-b:v", str(video_bitrate), "-preset", preset]
+    # set maxrate/bufsize if not present
+    if "-maxrate" not in extra_args and "-bufsize" not in extra_args:
+        try:
+            n = int(video_bitrate.rstrip("k"))
+            cmd += ["-maxrate", f"{n}k", "-bufsize", f"{max(2000, n*2)}k"]
+        except:
+            pass
+else:
+    cmd += ["-c:v", video_codec, "-crf", str(crf), "-preset", preset]
+
+if pixel_format:
+    cmd += ["-pix_fmt", pixel_format]
+if fps:
+    cmd += ["-r", str(fps)]
+
+cmd += ["-c:a", audio_codec, "-b:a", audio_bitrate]
+
+# metadata protection
+cmd += ["-metadata:s:v:0", "rotate=0", "-map_metadata", "-1"]
+
+if extra_args:
+    cmd += shlex.split(extra_args)
+
+cmd += [output_path]
+
+print("Running:", " ".join(shlex.quote(x) for x in cmd))
+os.execvp(cmd[0], cmd)
+PYCODE

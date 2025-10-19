@@ -1,0 +1,123 @@
+# profiles.toml — professional export profiles
+[defaults]
+container = "mp4"
+video_codec = "libx264"
+audio_codec = "aac"
+pixel_format = "yuv420p"
+audio_bitrate = "128k"
+audio_sample_rate = 44100
+audio_channels = 2
+preset = "medium"
+crf = 18
+video_bitrate = ""
+fps = 30
+max_duration = 0
+max_file_size = 0
+rotate_metadata = 0
+map_metadata = false
+extra_args = "-movflags +faststart"
+
+[platforms.Instagram.Post]
+name = "Insta_Post"
+container = "mp4"
+video_codec = "libx264"
+audio_codec = "aac"
+video_bitrate = "8000k"
+preset = "slow"
+fps = 30
+resolution = "1080:1350"
+aspect_ratio = "4:5"
+pixel_format = "yuv420p"
+audio_bitrate = "128k"
+filters = "eq=gamma=1.05:saturation=1.12"
+extra_args = "-movflags +faststart -maxrate 6000k -bufsize 12000k -profile:v high -level 4.1"
+
+[platforms.Instagram.Reel]
+name = "Insta_Reel"
+container = "mp4"
+video_codec = "libx264"
+audio_codec = "aac"
+video_bitrate = "12000k"
+preset = "slow"
+fps = 30
+resolution = "1080:1920"
+aspect_ratio = "9:16"
+pixel_format = "yuv420p"
+audio_bitrate = "128k"
+filters = "eq=gamma=1.08:saturation=1.10"
+extra_args = "-movflags +faststart -maxrate 6000k -bufsize 12000k -profile:v high -level 4.1"
+
+[platforms.Instagram.ReelPro]
+name = "Insta_Reel_Pro"
+container = "mp4"
+video_codec = "libx264"
+audio_codec = "aac"
+video_bitrate = "14000k"
+preset = "slow"
+fps = 30
+resolution = "1080:1920"
+aspect_ratio = "9:16"
+pixel_format = "yuv420p"
+audio_bitrate = "192k"
+filters = "zscale=t=linear:npl=100,tonemap=hable:desat=0.15,zscale=p=bt709:t=bt709:m=bt709:r=tv,eq=gamma=1.06:saturation=1.10"
+extra_args = "-movflags +faststart -maxrate 7000k -bufsize 14000k -profile:v high -level 4.2"
+
+[platforms.YouTube.Post]
+name = "YouTube_1080p_H264"
+container = "mp4"
+video_codec = "libx264"
+audio_codec = "aac"
+video_bitrate = "16000k"
+preset = "medium"
+fps = 30
+resolution = "1920:1080"
+aspect_ratio = "16:9"
+pixel_format = "yuv420p"
+audio_bitrate = "192k"
+filters = "unsharp=3:3:0.5,eq=gamma=1.02"
+extra_args = "-movflags +faststart -profile:v high -level 4.2"
+
+[platforms.YouTube.Post_VP9]
+name = "YouTube_1080p_VP9"
+container = "webm"
+video_codec = "libvpx-vp9"
+audio_codec = "libopus"
+video_bitrate = "8000k"
+preset = "good"
+fps = 30
+resolution = "1920:1080"
+aspect_ratio = "16:9"
+pixel_format = "yuv420p"
+audio_bitrate = "128k"
+extra_args = "-deadline good -cpu-used 2 -row-mt 1"
+
+[platforms.YouTube.Short]
+name = "YouTube_Short"
+container = "mp4"
+video_codec = "libx264"
+audio_codec = "aac"
+video_bitrate = "12000k"
+preset = "slow"
+fps = 30
+resolution = "1080:1920"
+aspect_ratio = "9:16"
+pixel_format = "yuv420p"
+audio_bitrate = "128k"
+filters = "zscale=t=linear,tonemap=hable,eq=gamma=1.08:saturation=1.08"
+extra_args = "-movflags +faststart -profile:v high -level 4.1"
+
+[platforms.Custom]
+name = "Custom_Export"
+container = "mp4"
+video_codec = "libx265"
+audio_codec = "aac"
+video_bitrate = "10000k"
+preset = "slow"
+crf = 20
+fps = 30
+resolution = "1440:1440"
+aspect_ratio = "1:1"
+pixel_format = "yuv420p"
+audio_bitrate = "128k"
+filters = "eq=contrast=1.05:saturation=1.08"
+extra_args = "-x265-params crf=20 -movflags +faststart"
