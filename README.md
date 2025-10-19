@@ -65,7 +65,7 @@ Outputs are produced next to the source file by default (or in a custom output d
 
 Add this to your `~/.zshrc`:
 
-    znap source Pakrohk/ffexport-zsh-plugin
+    znap source Pakrohk/ffexport.plugin.zsh
 
 Then reload your shell:
 
@@ -75,7 +75,7 @@ Then reload your shell:
 
 ### Manual install
 
-    git clone https://github.com/Pakrohk/ffexport-zsh-plugin.git ~/.local/share/ffexport
+    git clone https://github.com/Pakrohk/ffexport.plugin.zsh ~/.local/share/ffexport
     # Add to PATH and fpath in your ~/.zshrc:
     export PATH="$HOME/.local/share/ffexport/bin:$PATH"
     fpath=("$HOME/.local/share/ffexport/completion" $fpath)
