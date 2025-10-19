@@ -65,7 +65,7 @@ Outputs are produced next to the source file by default (or in a custom output d
 
 Add this to your `~/.zshrc`:
 
-    znap source YOUR_GITHUB_USER/ffexport-zsh-plugin
+    znap source Pakrohk/ffexport-zsh-plugin
 
 Then reload your shell:
 
@@ -75,7 +75,7 @@ Then reload your shell:
 
 ### Manual install
 
-    git clone https://github.com/YOUR_GITHUB_USER/ffexport-zsh-plugin.git ~/.local/share/ffexport
+    git clone https://github.com/Pakrohk/ffexport-zsh-plugin.git ~/.local/share/ffexport
     # Add to PATH and fpath in your ~/.zshrc:
     export PATH="$HOME/.local/share/ffexport/bin:$PATH"
     fpath=("$HOME/.local/share/ffexport/completion" $fpath)
@@ -286,17 +286,17 @@ MIT License — short & permissive. Put a `LICENSE` file in the repository:
 
     MIT License
 
-    Copyright (c) 2025 YOUR_NAME
+    Copyright (c) 2025 Pakrohk
 
     Permission is hereby granted...
 
-(Replace `YOUR_NAME` with your GitHub username or organization.)
+(Replace `Pakrohk` with your GitHub username or organization.)
 
 ---
 
 ## Final notes & recommended next steps
 
-1. Replace `YOUR_GITHUB_USER` with your GitHub handle and publish the repo.
+1. Replace `Pakrohk` with your GitHub handle and publish the repo.
 2. Consider adding CI that verifies `python3` command builds a valid ffmpeg command string (unit test construction).
 3. If you want HDR auto-detect + auto tone-map, I can add it quickly: it will inspect `ffprobe` metadata and choose a `*-Pro` profile or inject `zscale`+`tonemap` filters.
 
