@@ -1,8 +1,8 @@
 # ffexport.plugin.zsh - plugin bootstrap for znap / manual install
 # Determines package dir and adds bin -> PATH and completion dir -> fpath then compinit.
 
-# detect this script location robustly in zsh
-__ffexport_pkg_dir="$(builtin dirname -- "${(%):-%x}")"
+# detect this script location robustly in zsh (using zsh parameter expansion)
+__ffexport_pkg_dir="${${(%):-%x}:A:h}"
 
 # add bin to PATH (so 'ffexport' available)
 if [[ -d "$__ffexport_pkg_dir/bin" ]]; then
