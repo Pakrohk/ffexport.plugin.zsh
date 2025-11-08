@@ -1,50 +1,50 @@
-# ffexport.plugin.zsh - plugin bootstrap for znap / manual install
-# Determines package dir and adds bin -> PATH and completion dir -> fpath then compinit.
+#!/usr/bin/env zsh
+# Copyright (c) 2025 Pakrohk
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
-# detect this script location robustly in zsh (using zsh parameter expansion)
+# ffexport.plugin.zsh - Main plugin file
+# Compatible with zsh-snap and other plugin managers.
+
+# zsh-snap automatically adds `bin` to $PATH and `completion` to $fpath.
+# It also handles compinit, so we don't need to do it here.
+
+# Detect the plugin's installation directory.
+# shellcheck disable=SC2296,SC2298
 __ffexport_pkg_dir="${${(%):-%x}:A:h}"
 
-# add bin to PATH (so 'ffexport' available)
-if [[ -d "$__ffexport_pkg_dir/bin" ]]; then
-  path=("$__ffexport_pkg_dir/bin" $path)
-fi
-
-# add completion directory to fpath so compinit can find _ffexport
-if [[ -d "$__ffexport_pkg_dir/completion" ]]; then
-  fpath=("$__ffexport_pkg_dir/completion" $fpath)
-fi
-
-# ensure compinit loaded (user likely has it in dotfile, but safe to call)
-autoload -Uz compinit
-# avoid running compinit twice in case of multiple plugin loads
-if ! zstyle -t :compinstall:verbose >/dev/null 2>&1; then
-  compinit -u >/dev/null 2>&1 || true
-else
-  compinit >/dev/null 2>&1 || true
-fi
-
-# register completion explicitly (so it's available immediately)
-if (( $+commands[ffexport] )); then
-  # compdef will attach _ffexport from fpath
-  compdef _ffexport ffexport ffexport.sh >/dev/null 2>&1 || true
-fi
-
-# optional: export location of profiles file to override
+# Set the default profiles file location. Can be overridden by the user.
 export FFEXPORT_PROFILES="${__ffexport_pkg_dir}/profiles.toml"
 
-# convenience wrappers
+# Convenience wrappers for profile management.
 ffexport-export-profile() {
   if [[ $# -lt 2 ]]; then
-    echo "Usage: ffexport-export-profile <Profile> <out.toml>"
-    return 2
+    echo "Usage: ffexport-export-profile <Profile> <out.toml>" >&2
+    return 1
   fi
-  ffexport --export-profile "$1" --out "$2"
+  command ffexport --export-profile "$1" --out "$2"
 }
 
 ffexport-import-profile() {
   if [[ $# -lt 1 ]]; then
-    echo "Usage: ffexport-import-profile <file.toml>"
-    return 2
+    echo "Usage: ffexport-import-profile <file.toml>" >&2
+    return 1
   fi
-  ffexport --import-profile "$1"
+  command ffexport --import-profile "$1"
 }

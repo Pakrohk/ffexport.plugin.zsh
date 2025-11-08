@@ -1,53 +1,62 @@
-# _ffexport - zsh completion for ffexport (ffexport plugin)
-_local_ffexport_script() {
-  if [[ -n "${_ffexport_script:-}" ]]; then
-    echo "${_ffexport_script}"
-    return
-  fi
-  if command -v ffexport >/dev/null 2>&1; then
-    command -v ffexport
-  elif command -v ffexport.sh >/dev/null 2>&1; then
-    command -v ffexport.sh
-  else
-    echo "ffexport"
-  fi
-}
+# Copyright (c) 2025 Pakrohk
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+#compdef ffexport
+# _ffexport - zsh completion for ffexport
 
 _ffexport_get_profiles() {
-  local script out
-  script=$(_local_ffexport_script)
-  out=$("$script" --list-profiles 2>/dev/null) || out=""
-  if [[ -n $out ]]; then
-    print -l ${(f)out}
+  # Get profiles from ffexport, suppress errors if it fails.
+  local profiles
+  profiles=$(command ffexport --list-profiles 2>/dev/null)
+  if [[ -n "$profiles" ]]; then
+    # Split output by lines into an array.
+    print -l ${(f)profiles}
   fi
 }
 
 _ffexport() {
   local -a profiles
-  typeset -A opt_args
-
   profiles=($(_ffexport_get_profiles))
+
+  # Provide a fallback list if the command fails.
   if (( ${#profiles} == 0 )); then
-    profiles=(Instagram.Reel Instagram.Post YouTube.Post YouTube.Short Custom)
+    profiles=(
+      'Instagram.Reel'
+      'Instagram.Post'
+      'YouTube.Post'
+      'YouTube.Short'
+      'Custom'
+    )
   fi
 
-  _arguments \
-    '(-p --profile)'{-p,--profile}'[profile name]:profile:->profile' \
-    '(-i --input)'{-i,--input}'[input file]:file:_files' \
-    '(-q --quality)'{-q,--quality}'[quality]:quality:(low medium high)' \
-    '-n[output base name]:name' \
-    '-d[output dir]:directory:_directories' \
-    '-x[extra ffmpeg args]:args' \
-    '--list-profiles[print available profiles]' \
-    '*: :_files' && return 0
-
-  if [[ $state == profile ]]; then
-    compadd -a profiles
-    return 0
-  fi
-
-  return 1
+  _arguments -C \
+    '(-p|--profile)'{-p,--profile}'[Select an export profile]:profile:($profiles)' \
+    '(-i|--input)'{-i,--input}'[Path to the source video file]:input_file:_files' \
+    '(-q|--quality)'{-q,--quality}'[Set quality preset]:quality:(low medium high)' \
+    '(-d|--directory)'{-d,--directory}'[Directory to save the exported file]:output_dir:_directories' \
+    '(-x|--extra-args)'{-x,--extra-args}'[Pass additional raw flags to ffmpeg]:ffmpeg_args: ' \
+    '--list-profiles[List all available export profiles]' \
+    '(--export-profile)--export-profile[Export a profile to a TOML file]:profile_to_export:($profiles)' \
+    '(--import-profile)--import-profile[Import profiles from a TOML file]:profile_to_import:_files' \
+    '(--create-profile-from-url)--create-profile-from-url[Create profile from video URL]:url: ' \
+    '(-n|--name)'{-n,--name}'[Set output name or new profile name]:name: ' \
+    '(--out)--out[Output file for exported profile]:output_file:_files' \
+    '*:input_file:_files'
 }
-
-compdef _ffexport ffexport
-compdef _ffexport ffexport.sh
